@@ -73,6 +73,7 @@ export function buildCallout(t: CalloutTemplate, spec: CalloutSpec, ctx: Ctx): P
     const isLabel = e === t.labelText;
     const isElev = e === t.elevText;
     const isUnderline = e === t.underline;
+    const isLeader = e === t.leader;
 
     if (isLabel) pairs = setText(pairs, spec.label);
     if (isElev) pairs = setText(pairs, spec.elevation);
@@ -83,6 +84,20 @@ export function buildCallout(t: CalloutTemplate, spec: CalloutSpec, ctx: Ctx): P
     } else {
       pairs = transform(pairs, dx, dy);
     }
+
+    // Force the leader's arrow tip onto the exact RN point in the working
+    // drawing. The uniform dx/dy shift alone can leave a tiny residual gap
+    // if the model's hand-drawn leader wasn't perfectly snapped to its RN
+    // point — forcing this one vertex guarantees the tip always lands
+    // exactly on spec.anchor, regardless of that drafting imprecision.
+    if (isLeader && t.anchorVertex) {
+      pairs = pairs.map((p, i) => {
+        if (i === t.anchorVertex!.xIndex) return { code: p.code, value: fmt(spec.anchor.x) };
+        if (i === t.anchorVertex!.yIndex) return { code: p.code, value: fmt(spec.anchor.y) };
+        return p;
+      });
+    }
+
     out.push(...applyHandles(pairs, ctx));
   }
 
