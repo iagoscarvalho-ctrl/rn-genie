@@ -112,30 +112,18 @@ export function processRns(rows: RnRow[], dxf: ScannedDxf, s: Settings): RnResul
   const results: RnResult[] = [];
   for (const [key, groupRows] of groups) {
     const matched = groupRows.map((r) => ({ row: r, ent: matchPoint(r, dxf, s.radius) }));
-    const found = matched.filter((m) => m.ent);
     const label = groupRows
       .map((r, i) => (i === 0 ? r.nome : r.nome.replace(/^\s*RN\s*/i, "")))
       .join("/");
     const elevation = (groupRows[0].z ?? 0).toFixed(3);
 
-    if (found.length === 0) {
-      results.push({
-        key,
-        rows: groupRows,
-        label,
-        elevation,
-        anchor: null,
-        branches: [],
-        classification: "REVISAO",
-        manual: true,
-        reason: `Sem ponto correspondente no DXF de trabalho dentro de ${s.radius} m.`,
-      });
-      continue;
-    }
-
-    const anchorEnt = found[0].ent!;
-    const anchor = anchorEnt.pts[0];
-    const branches = found.slice(1).map((m) => m.ent!.pts[0]);
+    // The callout tip must land exactly on the coordinate that came from the
+    // spreadsheet — never on a nearby DXF point, which is what caused the
+    // visible offset. Matched DXF entities are only used to exclude the RN
+    // symbol itself from the classification search.
+    const anchor: Pt = { x: groupRows[0].x, y: groupRows[0].y };
+    const branches: Pt[] = groupRows.slice(1).map((r) => ({ x: r.x, y: r.y }));
+    const anchorEnt = matched[0].ent;
     const cls = classify(anchor, anchorEnt, dxf, s);
     const missing = matched.filter((m) => !m.ent).map((m) => m.row.nome);
     results.push({
