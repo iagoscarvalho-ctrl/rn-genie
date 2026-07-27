@@ -17,8 +17,15 @@ export interface CalloutTemplate {
   leader: RawEntity | null;
   /** every entity of the model callout */
   entities: RawEntity[];
-  /** arrow tip = point of the callout closest to the RN itself */
+  /** arrow tip = point of the callout closest to the RN itself (snapped to the
+   *  real RN point in the model when one is found nearby) */
   anchor: Pt;
+  /** index, within t.leader.pairs, of the {xCode, xIndex, yIndex} pair that IS
+   *  the anchor vertex. Used to force that exact vertex onto spec.anchor at
+   *  generation time, instead of trusting the uniform dx/dy translation —
+   *  this removes any residual drift left over from imprecise hand-drawn
+   *  leaders in the model file. */
+  anchorVertex: { xIndex: number; yIndex: number } | null;
   /** leader elbow (other end of the leader) */
   elbow: Pt | null;
   textHeight: number;
@@ -39,6 +46,43 @@ function isNumericText(s: string): boolean {
   return /^[+-]?\d+([.,]\d+)?$/.test(s.trim());
 }
 
+/** Finds the (xIndex, yIndex) of the vertex closest to `target` within an
+ *  entity's raw pairs, trying the 10/20 pair sequence first and, for LINE
+ *  entities, the 11/21 endpoint as a fallback. Matches by nearest value
+ *  rather than exact equality, so it still works after the anchor gets
+ *  snapped to a different (nearby) point. */
+function locateNearestVertex(
+  pairs: Pair[],
+  target: Pt,
+  codePairs: [number, number][] = [
+    [10, 20],
+    [11, 21],
+  ],
+): { xIndex: number; yIndex: number } | null {
+  let best: { xIndex: number; yIndex: number } | null = null;
+  let bestD = Infinity;
+  for (const [xCode, yCode] of codePairs) {
+    let pendingX: number | null = null;
+    let pendingXi = -1;
+    for (let i = 0; i < pairs.length; i++) {
+      const p = pairs[i];
+      if (p.code === xCode) {
+        pendingX = parseFloat(p.value);
+        pendingXi = i;
+      } else if (p.code === yCode && pendingX !== null) {
+        const y = parseFloat(p.value);
+        const d = Math.hypot(pendingX - target.x, y - target.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { xIndex: pendingXi, yIndex: i };
+        }
+        pendingX = null;
+      }
+    }
+  }
+  return best;
+}
+
 export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): CalloutTemplate {
   const scan = scanDxf(modelText);
   const want = layer.trim().toUpperCase();
@@ -54,13 +98,10 @@ export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): Callou
   }
 
   // pick the label text (non-numeric content) as the cluster seed
-  const seed =
-    texts.find((t) => !isNumericText(val(t.raw, 1) ?? "")) ?? texts[0];
+  const seed = texts.find((t) => !isNumericText(val(t.raw, 1) ?? "")) ?? texts[0];
   const height = num(seed.raw, 40) ?? 14;
   const radius = Math.max(height * 40, 1);
-  const cluster = onLayer.filter((e) =>
-    e.pts.some((p) => dist(p, textPos(seed)) <= radius),
-  );
+  const cluster = onLayer.filter((e) => e.pts.some((p) => dist(p, textPos(seed)) <= radius));
 
   const clusterTexts = cluster.filter((e) => e.type === "TEXT" || e.type === "MTEXT");
   const label = seed;
@@ -100,6 +141,26 @@ export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): Callou
     }
   }
 
+  // Snap the anchor to the real RN point in the model (POINT/INSERT, any layer,
+  // excluding the callout's own layer) instead of trusting the leader's drawn tip.
+  // A hand-drawn leader may not land exactly on the point (missing osnap); if we
+  // used its raw endpoint, that small drafting error would repeat, identical, on
+  // every generated callout — showing up as a constant offset from the RN point.
+  const snapTolerance = Math.max(height * 6, 0.5);
+  let nearestPt: Pt | null = null;
+  let nearestDist = Infinity;
+  for (const p of scan.points) {
+    if (p.layer.toUpperCase() === want) continue; // ignore markers drawn on the callout layer itself
+    const d = dist(p.pts[0], anchor);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestPt = p.pts[0];
+    }
+  }
+  if (nearestPt && nearestDist <= snapTolerance) anchor = nearestPt;
+
+  const anchorVertex = leaderEnt ? locateNearestVertex(leaderEnt.raw.pairs, anchor) : null;
+
   // underline = horizontal line closest to the label, excluding the leader
   let underline: ScannedEntity | null = null;
   let ubest = Infinity;
@@ -132,6 +193,7 @@ export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): Callou
     leader: leaderEnt?.raw ?? null,
     entities: cluster.map((e) => e.raw),
     anchor,
+    anchorVertex,
     elbow,
     textHeight: height,
     charWidth,
