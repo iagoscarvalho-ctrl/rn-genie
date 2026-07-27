@@ -141,24 +141,10 @@ export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): Callou
     }
   }
 
-  // Snap the anchor to the real RN point in the model (POINT/INSERT, any layer,
-  // excluding the callout's own layer) instead of trusting the leader's drawn tip.
-  // A hand-drawn leader may not land exactly on the point (missing osnap); if we
-  // used its raw endpoint, that small drafting error would repeat, identical, on
-  // every generated callout — showing up as a constant offset from the RN point.
-  const snapTolerance = Math.max(height * 6, 0.5);
-  let nearestPt: Pt | null = null;
-  let nearestDist = Infinity;
-  for (const p of scan.points) {
-    if (p.layer.toUpperCase() === want) continue; // ignore markers drawn on the callout layer itself
-    const d = dist(p.pts[0], anchor);
-    if (d < nearestDist) {
-      nearestDist = d;
-      nearestPt = p.pts[0];
-    }
-  }
-  if (nearestPt && nearestDist <= snapTolerance) anchor = nearestPt;
-
+  // IMPORTANT: the anchor must stay exactly on the leader's own drawn tip.
+  // Snapping it to a nearby RN point in the model shifts the whole cloned
+  // cluster (arrow head, texts, underline) by that difference, which is what
+  // made the generated callouts land offset from the RN point.
   const anchorVertex = leaderEnt ? locateNearestVertex(leaderEnt.raw.pairs, anchor) : null;
 
   // underline = horizontal line closest to the label, excluding the leader
