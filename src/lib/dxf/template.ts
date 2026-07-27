@@ -83,6 +83,40 @@ function locateNearestVertex(
   return best;
 }
 
+/** Smallest distance between any point of `a` and any point of `b`. */
+function minEntityDist(a: ScannedEntity, b: ScannedEntity): number {
+  let m = Infinity;
+  for (const p of a.pts) {
+    for (const q of b.pts) {
+      const d = dist(p, q);
+      if (d < m) m = d;
+    }
+  }
+  return m;
+}
+
+/** Grows a cluster from `seed` by connectivity: an entity joins the cluster
+ *  only if it's within `epsilon` of an entity already in it (leader touches
+ *  underline, text sits close to underline/leader). This is what keeps two
+ *  separate example callouts in the same model file from being merged into
+ *  one — a fixed search radius can't tell "close" from "next callout over",
+ *  but connectivity can, regardless of how far apart the callouts are. */
+function clusterConnected(entities: ScannedEntity[], seed: ScannedEntity, epsilon: number): ScannedEntity[] {
+  const visited = new Set<ScannedEntity>([seed]);
+  const queue: ScannedEntity[] = [seed];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const e of entities) {
+      if (visited.has(e)) continue;
+      if (minEntityDist(cur, e) <= epsilon) {
+        visited.add(e);
+        queue.push(e);
+      }
+    }
+  }
+  return entities.filter((e) => visited.has(e));
+}
+
 export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): CalloutTemplate {
   const scan = scanDxf(modelText);
   const want = layer.trim().toUpperCase();
@@ -100,8 +134,15 @@ export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): Callou
   // pick the label text (non-numeric content) as the cluster seed
   const seed = texts.find((t) => !isNumericText(val(t.raw, 1) ?? "")) ?? texts[0];
   const height = num(seed.raw, 40) ?? 14;
-  const radius = Math.max(height * 40, 1);
-  const cluster = onLayer.filter((e) => e.pts.some((p) => dist(p, textPos(seed)) <= radius));
+  // Connectivity threshold: generous enough to bridge the small gaps between
+  // a label and its underline, or an elevation text and its leader (typically
+  // well under 2x the text height), but tight enough to not reach a
+  // *different* callout drawn elsewhere in the model. height*5 was validated
+  // against a real model file with two example callouts ~10-20 units apart.
+  // If your model ever packs example callouts closer together than that,
+  // keep only one example callout per model file.
+  const epsilon = Math.max(height * 5, 2);
+  const cluster = clusterConnected(onLayer, seed, epsilon);
 
   const clusterTexts = cluster.filter((e) => e.type === "TEXT" || e.type === "MTEXT");
   const label = seed;
@@ -141,10 +182,24 @@ export function extractTemplate(modelText: string, layer = OUTPUT_LAYER): Callou
     }
   }
 
-  // IMPORTANT: the anchor must stay exactly on the leader's own drawn tip.
-  // Snapping it to a nearby RN point in the model shifts the whole cloned
-  // cluster (arrow head, texts, underline) by that difference, which is what
-  // made the generated callouts land offset from the RN point.
+  // Snap the anchor to the real RN point in the model (POINT/INSERT, any layer,
+  // excluding the callout's own layer) instead of trusting the leader's drawn tip.
+  // A hand-drawn leader may not land exactly on the point (missing osnap); if we
+  // used its raw endpoint, that small drafting error would repeat, identical, on
+  // every generated callout — showing up as a constant offset from the RN point.
+  const snapTolerance = Math.max(height * 6, 0.5);
+  let nearestPt: Pt | null = null;
+  let nearestDist = Infinity;
+  for (const p of scan.points) {
+    if (p.layer.toUpperCase() === want) continue; // ignore markers drawn on the callout layer itself
+    const d = dist(p.pts[0], anchor);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestPt = p.pts[0];
+    }
+  }
+  if (nearestPt && nearestDist <= snapTolerance) anchor = nearestPt;
+
   const anchorVertex = leaderEnt ? locateNearestVertex(leaderEnt.raw.pairs, anchor) : null;
 
   // underline = horizontal line closest to the label, excluding the leader
