@@ -39,12 +39,7 @@ function applyHandles(pairs: Pair[], ctx: Ctx): Pair[] {
   });
 }
 
-function transform(
-  pairs: Pair[],
-  dx: number,
-  dy: number,
-  scale?: { originX: number; factor: number },
-): Pair[] {
+function transform(pairs: Pair[], dx: number, dy: number, scale?: { originX: number; factor: number }): Pair[] {
   return pairs.map((p) => {
     if (X_CODES.has(p.code)) {
       let x = parseFloat(p.value);
@@ -71,8 +66,7 @@ export function buildCallout(t: CalloutTemplate, spec: CalloutSpec, ctx: Ctx): P
   const dy = spec.anchor.y - t.anchor.y;
   const out: Pair[] = [];
 
-  const widthFactor =
-    t.labelValue.length > 0 ? spec.label.length / t.labelValue.length : 1;
+  const widthFactor = t.labelValue.length > 0 ? spec.label.length / t.labelValue.length : 1;
 
   for (const e of t.entities) {
     let pairs = clonePairs(e.pairs);
@@ -114,7 +108,10 @@ function insertPairs(pairs: Pair[], at: number, extra: Pair[]): Pair[] {
   return [...pairs.slice(0, at), ...extra, ...pairs.slice(at)];
 }
 
-/** Clones a table entry (LAYER / STYLE) from the model into the working file if missing. */
+/** Clones a table entry (LAYER / STYLE) from the model into the working file if missing
+ *  OR if the existing entry is malformed (missing code 390, required by DXF 2000+ when
+ *  the file uses named plot styles — its absence is what causes AutoCAD's
+ *  "Did not receive PlotStyleName" / "drawing discarded" error). */
 function ensureTableEntry(
   workPairs: Pair[],
   modelPairs: Pair[],
@@ -123,19 +120,41 @@ function ensureTableEntry(
   ctx: Ctx,
   warnings: string[],
 ): Pair[] {
-  if (tableEntry(workPairs, tableName, entryName)) return workPairs;
+  const existing = tableEntry(workPairs, tableName, entryName);
+  const needsFix = tableName === "LAYER" && existing && val(existing, 390) === undefined;
+  if (existing && !needsFix) return workPairs;
+
   const src = tableEntry(modelPairs, tableName, entryName);
   if (!src) {
-    warnings.push(
-      `A entrada ${tableName} "${entryName}" não existe no DXF modelo nem no DXF de trabalho.`,
-    );
+    if (needsFix) {
+      warnings.push(
+        `A layer "${entryName}" existe no DXF de trabalho mas está sem o código 390 (Plot Style Name) e o DXF modelo não tem essa layer para servir de referência. O AutoCAD pode rejeitar o arquivo exportado.`,
+      );
+    } else {
+      warnings.push(`A entrada ${tableName} "${entryName}" não existe no DXF modelo nem no DXF de trabalho.`);
+    }
     return workPairs;
   }
+
   const table = findTable(workPairs, tableName);
   if (!table) {
     warnings.push(`O DXF de trabalho não possui tabela ${tableName}.`);
     return workPairs;
   }
+
+  if (existing && needsFix) {
+    // Replace the malformed entry in place with the model's valid one,
+    // keeping the original handle so nothing else referencing it breaks.
+    const from = existing.start;
+    const to = existing.end;
+    const origHandle = val(existing, 5);
+    const fixed = clonePairs(src.pairs).map((p) => (p.code === 5 && origHandle ? { code: 5, value: origHandle } : p));
+    warnings.push(
+      `A layer "${entryName}" do DXF de trabalho estava sem o código 390 (Plot Style Name) — entrada substituída pela versão válida do DXF modelo.`,
+    );
+    return [...workPairs.slice(0, from), ...fixed, ...workPairs.slice(to)];
+  }
+
   const cloned = applyHandles(clonePairs(src.pairs), ctx);
   return insertPairs(workPairs, table.endtab, cloned);
 }
