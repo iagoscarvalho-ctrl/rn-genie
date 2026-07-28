@@ -90,7 +90,7 @@
   --grid-line: oklch(0.26 0.014 250);
   --poste: oklch(0.78 0.16 78);
   --muro: oklch(0.72 0.13 195);
-  --divisa: oklch(0.66 0.16 145);
+  --cerca: oklch(0.66 0.16 145);
   --revisao: oklch(0.68 0.2 25);
   --font-display: "JetBrains Mono", ui-monospace, monospace;
   --font-body: "Inter Tight", system-ui, sans-serif;
@@ -166,7 +166,7 @@
 @theme inline {
   --color-poste: var(--poste);
   --color-muro: var(--muro);
-  --color-divisa: var(--divisa);
+  --color-cerca: var(--cerca);
   --color-revisao: var(--revisao);
   --font-display: var(--font-display);
   --font-sans: var(--font-body);
