@@ -5,7 +5,7 @@ import type { RnResult } from "@/lib/rn/process";
 const COLORS: Record<string, string> = {
   POSTE: "#f5b544",
   MURO: "#3fc4d1",
-  DIVISA: "#4fc98a",
+  CERCA: "#4fc98a",
   REVISAO: "#f0644c",
 };
 
