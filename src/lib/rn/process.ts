@@ -2,7 +2,7 @@ import type { CalloutSpec } from "@/lib/dxf/generate";
 import { dist, distToEntity, type Pt, type ScannedDxf, type ScannedEntity } from "@/lib/dxf/scan";
 import type { RnRow } from "@/lib/spreadsheet";
 
-export type Classification = "POSTE" | "MURO" | "DIVISA" | "REVISAO";
+export type Classification = "POSTE" | "MURO" | "CERCA" | "REVISAO";
 
 export interface Settings {
   radius: number;
@@ -56,7 +56,7 @@ function classify(
     let kind: Classification | null = null;
     if (e.type === "INSERT" && inLayers(e.layer, s.posteLayers)) kind = "POSTE";
     else if ((e.type === "LWPOLYLINE" || e.type === "LINE" || e.type === "POLYLINE") && inLayers(e.layer, s.muroLayers))
-      kind = up(e.layer).includes("DIVISA") ? "DIVISA" : "MURO";
+      kind = up(e.layer).includes("CERCA") ? "CERCA" : "MURO";
     if (!kind) continue;
     const d = distToEntity(anchor, e);
     if (d <= s.radius) candidates.push({ e, d, kind });
