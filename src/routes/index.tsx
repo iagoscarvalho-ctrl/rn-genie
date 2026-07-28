@@ -54,7 +54,7 @@ const MODEL_KEY = "rn-dxf-model";
 const CLASS_STYLES: Record<Classification, string> = {
   POSTE: "border-poste/50 text-poste",
   MURO: "border-muro/50 text-muro",
-  DIVISA: "border-divisa/50 text-divisa",
+  CERCA: "border-cerca/50 text-cerca",
   REVISAO: "border-revisao/50 text-revisao",
 };
 
@@ -120,7 +120,7 @@ function Index() {
 
   const [radius, setRadius] = useState(5);
   const [posteLayers, setPosteLayers] = useState("POSTE, ILUMINACAO");
-  const [muroLayers, setMuroLayers] = useState("MURO, DIVISA, EDIFICACAO");
+  const [muroLayers, setMuroLayers] = useState("MURO, CERCA, EDIFICACAO");
 
   const [results, setResults] = useState<RnResult[]>([]);
   const [processed, setProcessed] = useState(false);
@@ -238,7 +238,7 @@ function Index() {
         <h1 className="mt-2 text-3xl font-bold">Automação de chamadas de RN</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Cruza a planilha de Referências de Nível com a planta georreferenciada, classifica cada RN
-          como POSTE, MURO ou DIVISA e desenha as chamadas clonando o molde do DXF modelo — sem
+          como POSTE, MURO ou CERCA e desenha as chamadas clonando o molde do DXF modelo — sem
           reconstruir nenhuma tabela do zero.
         </p>
       </header>
@@ -259,7 +259,7 @@ function Index() {
         />
         <FileField
           label="2 · DXF de trabalho"
-          hint="Planta com os pontos de RN, blocos de poste e polilinhas de muro/divisa."
+          hint="Planta com os pontos de RN, blocos de poste e polilinhas de muro/cerca."
           accept=".dxf"
           onFile={onWork}
           state={
@@ -302,7 +302,7 @@ function Index() {
             />
           </div>
           <div>
-            <Label htmlFor="muro">Layers de muro / divisa</Label>
+            <Label htmlFor="muro">Layers de muro / cerca</Label>
             <Input
               id="muro"
               value={muroLayers}
@@ -336,7 +336,7 @@ function Index() {
         <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
           <span className="text-poste">● POSTE</span>
           <span className="text-muro">● MURO</span>
-          <span className="text-divisa">● DIVISA</span>
+          <span className="text-cerca">● CERCA</span>
           <span className="text-revisao">● Revisão manual</span>
         </div>
       </section>
@@ -390,7 +390,7 @@ function Index() {
                           <SelectItem value="REVISAO">Definir…</SelectItem>
                           <SelectItem value="POSTE">POSTE</SelectItem>
                           <SelectItem value="MURO">MURO</SelectItem>
-                          <SelectItem value="DIVISA">DIVISA</SelectItem>
+                          <SelectItem value="CERCA">CERCA</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
